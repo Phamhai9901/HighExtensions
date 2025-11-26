@@ -433,11 +433,11 @@ public static class ExtensionMethods
         return null;
     }
     //public static IEnumerable<T> Where<T>(this IEnumerable<TSource> source, Func<TSource, T> predicate);  
-    public static Sprite ToSprite(this Texture2D texture)
-    {
-        Rect rect = new Rect(0, 0, texture.width, texture.height);
-        return Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f));
-    }
+    //public static Sprite ToSprite(this Texture2D texture)
+    //{
+    //    Rect rect = new Rect(0, 0, texture.width, texture.height);
+    //    return Sprite.Create(texture, rect, new Vector2(0.5f, 0.5f));
+    //}
     public static bool IsPointerOverGameObject()
     {
         //check mouse
