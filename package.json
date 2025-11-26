@@ -3,6 +3,6 @@
   "version": "0.0.1",
   "displayName": "High Extensions",
   "description": "Bộ extension dùng chung cho tất cả project của High",
-  "unity": "6000.2.7f2",
+  "unity": "6000.0",
   "keywords": ["utils", "extensions"]
 }
