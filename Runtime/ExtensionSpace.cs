@@ -141,4 +141,12 @@ public static class ExtensionSpace
 
         return vectorList.OrderBy(v => Vector2.Distance(vectorA, v)).First();
     }
+    public static Vector2 RandomInRange(this Vector2 vector,float x, float y)
+    {
+        return vector + new Vector2(UnityEngine.Random.Range(-x, x), UnityEngine.Random.Range(-y, y));
+    }
+    public static Vector3 RandomInRange(this Vector3 vector, float x, float y, float z)
+    {
+        return vector + new Vector3(UnityEngine.Random.Range(-x, x), UnityEngine.Random.Range(-y, y), UnityEngine.Random.Range(-z, z));
+    }
 }
