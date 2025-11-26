@@ -7,8 +7,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
-using static DataSpawnEnemyAI;
-
 public static class ExtensionMethods
 {
     private static readonly ConcurrentDictionary<Enum, string> s_cache = new ConcurrentDictionary<Enum, string>();
@@ -289,7 +287,7 @@ public static class ExtensionMethods
             Transform child = transform.GetChild(0);
 
             child.SetParent(null);
-            child.gameObject.Despawn();
+            GameObject.Destroy(child.gameObject);
         }
     }
     public static void DestroyAllChildEditor(this Transform transform)
@@ -309,13 +307,6 @@ public static class ExtensionMethods
     public static bool Contains(this LayerMask mask, int layer)
     {
         return ((mask & (1 << layer)) != 0);
-    }
-    public static bool MovingTypeContains(this MovingType mask, int layer)
-    {
-        MovingType raw = (MovingType)layer;
-        return (mask & raw) == raw;
-        //return mask.HasFlag(layer); //(( & (1 << layer)) != 0);
-
     }
     public static Color SetA(this Color color, float alpha)
     {

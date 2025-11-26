@@ -115,9 +115,8 @@ public static class ExtensionSpace
         }
         return pivot;
     }
-    public static Vector2 WorldToRectPoint2D(Vector3 worldPoint, RectTransform Canvas)
+    public static Vector2 WorldToRectPoint2D(Vector3 worldPoint, Camera cameraView, RectTransform Canvas)
     {
-        var cameraView = CameraManager.GetCamera("main");
         if (cameraView == null || Canvas == null)
         {
             Debug.LogWarning("MainCamera or CanvasRect is null.");
