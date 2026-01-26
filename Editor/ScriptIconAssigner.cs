@@ -3,7 +3,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.IO;
-
+#if UNITY_EDITOR
 [InitializeOnLoad]
 public static class ScriptIconAssigner
 {
@@ -69,3 +69,4 @@ public static class ScriptIconAssigner
         EditorGUIUtility.SetIconForObject(script, icon);
     }
 }
+#endif

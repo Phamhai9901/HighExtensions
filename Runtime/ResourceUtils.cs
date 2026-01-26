@@ -6,6 +6,7 @@ namespace High
 {
     public static class ResourceUtils
     {
+#if UNITY_EDITOR
         public static List<T> LoadAllAssetsAtPath<T>(string path, string format = "*.asset") where T : Object
         {
             if (!Directory.Exists(path))
@@ -41,4 +42,5 @@ namespace High
             return AssetDatabase.LoadAssetAtPath<T>(fullPath);
         }
     }
+#endif
 }
