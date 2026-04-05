@@ -5,9 +5,24 @@ namespace High
 {
     /// <summary>
     /// Quản lý một pool của một loại prefab cụ thể.
-    /// - activeSet        : HashSet → Contains/Remove O(1)
-    /// - _componentCache  : cache IPoolObject[] mỗi instance, không alloc lại
-    /// - _ownerMap        : reverse-lookup do PoolManager nắm, Pool chỉ Contains()
+    ///
+    /// Thứ tự lifecycle đúng khi tạo instance mới:
+    ///   1. Instantiate (prefab có thể đang inactive)
+    ///   2. SetActive(true)  → đảm bảo Awake + Start chạy đủ
+    ///   3. OnCreated()      → component đã init xong, an toàn để gọi
+    ///   4. OnDespawn()      → báo sắp vào pool
+    ///   5. SetActive(false) → đưa vào pool
+    ///
+    /// Thứ tự lifecycle khi Spawn:
+    ///   1. SetParent + position/rotation/scale
+    ///   2. SetActive(true)
+    ///   3. OnSpawn()
+    ///
+    /// Thứ tự lifecycle khi Kill:
+    ///   1. OnDespawn()
+    ///   2. ResetTransform
+    ///   3. SetActive(false)
+    ///   4. Push về stack
     /// </summary>
     public class Pool
     {
@@ -22,8 +37,8 @@ namespace High
 
         public Pool(GameObject prefab, int initialSize = 0)
         {
-            Prefab        = prefab;
-            _expandCount  = initialSize;
+            Prefab       = prefab;
+            _expandCount = initialSize;
         }
 
         // ── Prewarm ──────────────────────────────
@@ -32,9 +47,7 @@ namespace High
         {
             for (int i = 0; i < count; i++)
             {
-                var instance = CreateFreshInstance();
-                ResetTransform(instance);
-                instance.SetActive(false);
+                var instance = CreateFreshInstance(); // Awake/Start chạy + OnCreated() + về pool
                 _pooled.Push(instance);
             }
         }
@@ -55,6 +68,8 @@ namespace High
 
             var obj = _pooled.Pop();
 
+            // ── Transform trước khi bật active ──
+            // SetParent lúc inactive tránh layout rebuild không cần thiết trên UI
             obj.transform.SetParent(parent);
 
             if (useLocalPosition) obj.transform.localPosition = position;
@@ -68,9 +83,14 @@ namespace High
 
             obj.transform.localScale = (scale == default) ? Vector3.one : scale;
 
+            // ── Bật active rồi mới gọi OnSpawn ──
             SetActiveSafe(obj, isActive);
             _active.Add(obj);
-            InvokeEvent(obj, PoolEvent.Spawn);
+
+            // OnSpawn chỉ gọi sau SetActive → component đã OnEnable
+            if (isActive)
+                InvokeEvent(obj, PoolEvent.Spawn);
+
             return obj;
         }
 
@@ -83,6 +103,8 @@ namespace High
                 Object.Destroy(obj);
                 return;
             }
+
+            // OnDespawn trước khi tắt → component còn active, có thể dọn state
             InvokeEvent(obj, PoolEvent.Despawn);
             ResetTransform(obj);
             SetActiveSafe(obj, false);
@@ -101,8 +123,23 @@ namespace High
         {
             var obj  = Object.Instantiate(Prefab);
             obj.name = $"{Prefab.name}_{_expandCount++}";
+
+            // ── Bước 1: bật active để Awake + Start chạy đủ ──
+            // Dù prefab gốc có inactive, instance cần active để init
+            SetActiveSafe(obj, true);
+
+            // ── Bước 2: cache SAU khi Awake chạy ──
+            // GetComponentsInChildren lúc này trả về đủ component đã init
             _cache[obj] = obj.GetComponentsInChildren<IPoolObject>(includeInactive: true);
+
+            // ── Bước 3: OnCreated – component đã sẵn sàng ──
             InvokeEvent(obj, PoolEvent.Create);
+
+            // ── Bước 4: OnDespawn + tắt → đưa vào pool ──
+            InvokeEvent(obj, PoolEvent.Despawn);
+            ResetTransform(obj);
+            SetActiveSafe(obj, false);
+
             return obj;
         }
 
