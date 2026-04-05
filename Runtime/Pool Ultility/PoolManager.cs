@@ -3,28 +3,15 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Singleton quản lý toàn bộ GameObject pool.
-/// - _ownerMap                  : reverse-lookup O(1) Kill
-/// - key = prefab.name (string) : ổn định qua scene reload
-/// - Coroutine delay            : không alloc mỗi frame
-/// - OnObjectPermanentlyDestroyed : GameObjectExtension tự dọn cache
-/// </summary>
 public class PoolManager : MonoBehaviour
 {
     public static PoolManager Instance { get; private set; }
 
-    /// <summary>
-    /// Fire khi object bị Destroy vĩnh viễn (không qua pool).
-    /// GameObjectExtension subscribe để xoá component cache đúng entry.
-    /// </summary>
     public event Action<GameObject> OnObjectPermanentlyDestroyed;
 
     private readonly Dictionary<string, Pool> _pools = new();
     private readonly Dictionary<GameObject, Pool> _ownerMap = new();
     private readonly Dictionary<Type, List<DataPoolSpecial>> _componentPools = new();
-
-    // ── Bootstrap ────────────────────────────
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Bootstrap()
@@ -54,14 +41,20 @@ public class PoolManager : MonoBehaviour
         return obj;
     }
 
+    /// <summary>
+    /// Spawn inactive, sau delay mới gọi pool.ActivateSpawned()
+    /// để đảm bảo OnSpawn() và SetActive đúng thứ tự.
+    /// </summary>
     public GameObject SpawnDelay(
         GameObject prefab,
         Vector3 position,
         float delay,
         Transform parent = null)
     {
-        var obj = Spawn(prefab, position, parent, isActive: false);
-        StartCoroutine(ActivateAfter(obj, delay));
+        var pool = GetOrCreatePool(prefab);
+        var obj = pool.Spawn(position, parent: parent, isActive: false);
+        _ownerMap[obj] = pool;
+        StartCoroutine(ActivateAfter(pool, obj, parent, position, delay));
         return obj;
     }
 
@@ -75,7 +68,6 @@ public class PoolManager : MonoBehaviour
         {
             _ownerMap.Remove(obj);
             pool.Kill(obj);
-            // KHÔNG fire event – object vẫn sống trong pool
         }
         else
         {
@@ -95,7 +87,7 @@ public class PoolManager : MonoBehaviour
     public void Prewarm(GameObject prefab, int count)
         => GetOrCreatePool(prefab).InitPool(count);
 
-    // ── Component pool (giữ API gốc) ──────────
+    // ── Component pool ────────────────────────
 
     public void AddListComponent(Type type, DataPoolSpecial data)
     {
@@ -115,7 +107,6 @@ public class PoolManager : MonoBehaviour
         {
             pool = new Pool(prefab);
             _pools[prefab.name] = pool;
-
             var container = new GameObject(prefab.name);
             container.transform.SetParent(transform);
             pool.Transform = container.transform;
@@ -129,10 +120,16 @@ public class PoolManager : MonoBehaviour
         Kill(obj);
     }
 
-    private static IEnumerator ActivateAfter(GameObject obj, float delay)
+    private static IEnumerator ActivateAfter(
+        Pool pool,
+        GameObject obj,
+        Transform parent,
+        Vector3 position,
+        float delay)
     {
         yield return new WaitForSeconds(delay);
-        if (obj != null) obj.SetActive(true);
+        if (obj != null)
+            pool.ActivateSpawned(obj, parent, position);
     }
 }
 

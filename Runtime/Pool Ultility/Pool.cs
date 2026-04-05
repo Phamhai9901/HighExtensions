@@ -4,23 +4,14 @@ using UnityEngine;
 /// <summary>
 /// Quản lý một pool của một loại prefab cụ thể.
 ///
-/// Thứ tự lifecycle đúng khi tạo instance mới:
-///   1. Instantiate (prefab có thể đang inactive)
-///   2. SetActive(true)  → đảm bảo Awake + Start chạy đủ
-///   3. OnCreated()      → component đã init xong, an toàn để gọi
-///   4. OnDespawn()      → báo sắp vào pool
-///   5. SetActive(false) → đưa vào pool
+/// Thứ tự Spawn (quan trọng cho Unity UI):
+///   1. SetActive(true)          ← TRƯỚC SetParent
+///   2. SetParent(parent)        ← Canvas rebuild xảy ra SAU OnEnable
+///   3. SetPosition/Rotation/Scale
+///   4. OnSpawn()
 ///
-/// Thứ tự lifecycle khi Spawn:
-///   1. SetParent + position/rotation/scale
-///   2. SetActive(true)
-///   3. OnSpawn()
-///
-/// Thứ tự lifecycle khi Kill:
-///   1. OnDespawn()
-///   2. ResetTransform
-///   3. SetActive(false)
-///   4. Push về stack
+/// Lý do: nếu SetParent trước khi SetActive trên Canvas hierarchy,
+/// các Behaviour component con không được enable đúng cách.
 /// </summary>
 public class Pool
 {
@@ -44,10 +35,7 @@ public class Pool
     public void InitPool(int count = 0)
     {
         for (int i = 0; i < count; i++)
-        {
-            var instance = CreateFreshInstance(); // Awake/Start chạy + OnCreated() + về pool
-            _pooled.Push(instance);
-        }
+            _pooled.Push(CreateFreshInstance());
     }
 
     // ── Spawn ─────────────────────────────────
@@ -65,31 +53,40 @@ public class Pool
             _pooled.Push(CreateFreshInstance());
 
         var obj = _pooled.Pop();
-
-        // ── Transform trước khi bật active ──
-        // SetParent lúc inactive tránh layout rebuild không cần thiết trên UI
-        obj.transform.SetParent(parent);
-
-        if (useLocalPosition) obj.transform.localPosition = position;
-        else obj.transform.position = position;
-
-        var rot = (rotation == default || rotation == Quaternion.identity)
-            ? Prefab.transform.rotation : rotation;
-
-        if (useLocalRotation) obj.transform.localRotation = rot;
-        else obj.transform.rotation = rot;
-
-        obj.transform.localScale = (scale == default) ? Vector3.one : scale;
-
-        // ── Bật active rồi mới gọi OnSpawn ──
-        SetActiveSafe(obj, isActive);
         _active.Add(obj);
 
-        // OnSpawn chỉ gọi sau SetActive → component đã OnEnable
         if (isActive)
-            InvokeEvent(obj, PoolEvent.Spawn);
+            ActivateSpawned(obj, parent, position, rotation, scale,
+                            useLocalPosition, useLocalRotation);
+        else
+            ApplyTransform(obj, parent, position, rotation, scale,
+                           useLocalPosition, useLocalRotation);
 
         return obj;
+    }
+
+    /// <summary>
+    /// Bật active + apply transform + OnSpawn.
+    /// Thứ tự: SetActive TRƯỚC SetParent để UI component enable đúng.
+    /// </summary>
+    public void ActivateSpawned(
+        GameObject obj,
+        Transform parent = null,
+        Vector3 position = default,
+        Quaternion rotation = default,
+        Vector3 scale = default,
+        bool useLocalPosition = false,
+        bool useLocalRotation = false)
+    {
+        // ── 1. SetActive(true) TRƯỚC SetParent ──
+        SetActiveSafe(obj, true);
+
+        // ── 2. SetParent sau khi component đã OnEnable ──
+        ApplyTransform(obj, parent, position, rotation, scale,
+                       useLocalPosition, useLocalRotation);
+
+        // ── 3. OnSpawn: component active + transform đúng chỗ ──
+        InvokeEvent(obj, PoolEvent.Spawn);
     }
 
     // ── Kill ──────────────────────────────────
@@ -102,7 +99,6 @@ public class Pool
             return;
         }
 
-        // OnDespawn trước khi tắt → component còn active, có thể dọn state
         InvokeEvent(obj, PoolEvent.Despawn);
         ResetTransform(obj);
         SetActiveSafe(obj, false);
@@ -122,23 +118,40 @@ public class Pool
         var obj = Object.Instantiate(Prefab);
         obj.name = $"{Prefab.name}_{_expandCount++}";
 
-        // ── Bước 1: bật active để Awake + Start chạy đủ ──
-        // Dù prefab gốc có inactive, instance cần active để init
         SetActiveSafe(obj, true);
 
-        // ── Bước 2: cache SAU khi Awake chạy ──
-        // GetComponentsInChildren lúc này trả về đủ component đã init
         _cache[obj] = obj.GetComponentsInChildren<IPoolObject>(includeInactive: true);
 
-        // ── Bước 3: OnCreated – component đã sẵn sàng ──
         InvokeEvent(obj, PoolEvent.Create);
 
-        // ── Bước 4: OnDespawn + tắt → đưa vào pool ──
         InvokeEvent(obj, PoolEvent.Despawn);
         ResetTransform(obj);
         SetActiveSafe(obj, false);
 
         return obj;
+    }
+
+    private static void ApplyTransform(
+        GameObject obj,
+        Transform parent,
+        Vector3 position,
+        Quaternion rotation,
+        Vector3 scale,
+        bool useLocalPosition,
+        bool useLocalRotation)
+    {
+        obj.transform.SetParent(parent);
+
+        if (useLocalPosition) obj.transform.localPosition = position;
+        else obj.transform.position = position;
+
+        var rot = (rotation == default || rotation == Quaternion.identity)
+            ? obj.transform.rotation : rotation;
+
+        if (useLocalRotation) obj.transform.localRotation = rot;
+        else obj.transform.rotation = rot;
+
+        obj.transform.localScale = (scale == default) ? Vector3.one : scale;
     }
 
     private void ResetTransform(GameObject obj)
